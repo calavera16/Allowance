@@ -185,8 +185,58 @@ app.whenReady().then(async () => {
   const errors = [];
   let customCompanion = overlayOnly ? null : await dashboardSmoke(errors);
   win = new BrowserWindow({ width: 360, height: 148, frame: false, show: false, webPreferences: { preload: path.join(__dirname, 'planning-smoke-preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
+  const resizeOverlay = async (width, height, deviceScaleFactor = 0) => {
+    win.setSize(width, height);
+    win.webContents.enableDeviceEmulation({ screenPosition: "desktop", screenSize: { width: 1920, height: 1080 },
+      viewPosition: { x: 0, y: 0 }, viewSize: { width, height }, deviceScaleFactor, scale: 1 });
+    // A hidden Windows renderer can report the new viewport before 100vw/100vh
+    // and container-query units have laid out. Wake it, then inspect actual bounds.
+    await win.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true });
+    await waitFor(`(() => {
+      const shell = document.querySelector('.overlay-shell')?.getBoundingClientRect();
+      return innerWidth === ${width} && innerHeight === ${height} && shell &&
+        Math.abs(shell.width - ${width}) < 1 && Math.abs(shell.height - ${height}) < 1 &&
+        (${deviceScaleFactor} === 0 || devicePixelRatio === ${deviceScaleFactor});
+    })()`);
+    // Container-query descendants can settle one frame after the shell itself.
+    await evaluate(`new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Overlay layout frames timed out')), 10000);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        clearTimeout(timeout);
+        resolve();
+      }));
+    })`);
+  };
+  const setCustomOverlay = async (state) => {
+    win.webContents.send("smoke:overlay", state);
+    // Reduced motion may already hide the image. Wait for the actual React props,
+    // not just display:none, before measuring the new size or paused state.
+    await waitFor(`(() => {
+      const gif = document.querySelector('.companion--custom');
+      const image = gif?.querySelector('.custom-gif-animation');
+      return gif?.dataset.animated === '${state.companionAnimated}' &&
+        Number(gif.style.getPropertyValue('--custom-companion-scale')) === ${state.companionSize / 64} &&
+        image?.naturalWidth === ${state.customCompanion.width} && image?.naturalHeight === ${state.customCompanion.height};
+    })()`);
+  };
+  const gifWidth = () => evaluate("document.querySelector('.companion--custom').getBoundingClientRect().width");
+  const assertGifGrowth = async () => {
+    await resizeOverlay(360, 148);
+    const initial = await gifWidth();
+    await resizeOverlay(720, 296);
+    const grown = await gifWidth();
+    assert.ok(initial > 0 && grown > initial * 1.9,
+      `GIF grows with the overlay instead of staying at a fixed pixel size (initial: ${initial}, grown: ${grown})`);
+    await assertGifFits();
+    await resizeOverlay(360, 148);
+    const restored = await gifWidth();
+    assert.ok(Math.abs(restored - initial) < 1,
+      `GIF returns to its original size when the overlay shrinks (initial: ${initial}, restored: ${restored})`);
+    return initial;
+  };
   win.webContents.on("console-message", event => { if (event.level === "error") errors.push(event.message); });
   await win.loadFile(path.join(__dirname, "../dist/index.html"), { query: { mode: "overlay" } });
+  win.webContents.debugger.attach("1.3");
   if (overlayOnly) {
     customCompanion = await evaluate(`(async () => { ${storageSource};
       return importCompanionGif(new File([Uint8Array.from(atob(${JSON.stringify(animatedGif().toString('base64'))}), c => c.charCodeAt(0))], 'test-companion.gif', { type: 'image/gif' })); })()`);
@@ -203,27 +253,18 @@ app.whenReady().then(async () => {
   await screenshot("overlay-waking.png");
   win.webContents.send("smoke:overlay", overlayState(25, "plant"));
   await waitFor("document.querySelector('.companion--tired')");
-  win.setSize(260, 112);
+  await resizeOverlay(260, 112);
   await screenshot("overlay-minimum.png");
   assert.ok(await evaluate("document.querySelector('.overlay-providers').getBoundingClientRect().bottom <= innerHeight"), "Companion fits the smallest overlay");
   win.webContents.send("smoke:overlay", overlayState(null, "plant"));
   await waitFor("document.querySelector('.companion--waiting')");
   win.webContents.send("smoke:overlay", overlayState(80, "none"));
   await waitFor("!document.querySelector('.companion')");
-  win.webContents.send("smoke:overlay", { ...overlayState(80, "custom"), customCompanion, companionSize: 96, companionAnimated: true });
-  await waitFor("document.querySelector('.custom-gif-animation')?.naturalWidth === 32");
+  await setCustomOverlay({ ...overlayState(80, "custom"), customCompanion, companionSize: 96, companionAnimated: true });
   assert.ok(await evaluate("document.querySelector('.overlay-providers').getBoundingClientRect().bottom <= innerHeight"), "Custom GIF fits the smallest overlay");
   await screenshot("overlay-custom-gif.png");
-  win.webContents.send("smoke:overlay", { ...overlayState(80, "custom"), customCompanion, companionSize: 64, companionAnimated: false });
+  await setCustomOverlay({ ...overlayState(80, "custom"), customCompanion, companionSize: 64, companionAnimated: false });
   await waitFor("getComputedStyle(document.querySelector('.custom-gif-animation')).display === 'none'");
-  const gifWidth = () => evaluate("document.querySelector('.companion--custom').getBoundingClientRect().width");
-  const resizeOverlay = async (width, height) => {
-    win.setSize(width, height);
-    // Explicit viewport sizes avoid delayed native resize events in hidden Windows renderers.
-    win.webContents.enableDeviceEmulation({ screenPosition: "desktop", screenSize: { width: 1920, height: 1080 },
-      viewPosition: { x: 0, y: 0 }, viewSize: { width, height }, deviceScaleFactor: 0, scale: 1 });
-    await waitFor(`innerWidth === ${width} && innerHeight === ${height}`);
-  };
   const assertGifFits = async () => {
     const layout = await evaluate(`(() => {
       const gif = document.querySelector('.companion--custom').getBoundingClientRect();
@@ -238,24 +279,22 @@ app.whenReady().then(async () => {
     })()`);
     for (const [check, passed] of Object.entries(layout)) assert.ok(passed, `Custom GIF layout: ${check}`);
   };
-  await resizeOverlay(360, 148);
-  const defaultGifWidth = await gifWidth();
-  await resizeOverlay(720, 296);
-  assert.ok(await gifWidth() > defaultGifWidth * 1.9, "GIF grows with the overlay instead of staying at a fixed pixel size");
-  await assertGifFits();
-  await resizeOverlay(360, 148);
-  assert.ok(Math.abs(await gifWidth() - defaultGifWidth) < 1, "GIF returns to its original size when the overlay shrinks");
+  const defaultGifWidth = await assertGifGrowth();
   for (const deviceScaleFactor of [1, 1.5, 2]) {
-    win.webContents.enableDeviceEmulation({ screenPosition: "desktop", screenSize: { width: 1920, height: 1080 },
-      viewPosition: { x: 0, y: 0 }, viewSize: { width: 360, height: 148 }, deviceScaleFactor, scale: 1 });
-    await waitFor(`devicePixelRatio === ${deviceScaleFactor}`);
+    await resizeOverlay(360, 148, deviceScaleFactor);
     assert.ok(Math.abs(await gifWidth() - defaultGifWidth) < 1, "Display scaling keeps the GIF proportional to the overlay");
     await assertGifFits();
   }
   win.webContents.disableDeviceEmulation();
+  for (const motion of ["no-preference", "reduce"]) {
+    await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: motion }] });
+    await setCustomOverlay({ ...overlayState(80, "custom"), customCompanion, companionSize: 96, companionAnimated: true });
+    await setCustomOverlay({ ...overlayState(80, "custom"), customCompanion, companionSize: 64, companionAnimated: false });
+    await assertGifGrowth();
+  }
+  await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", { features: [] });
   for (const animated of [true, false]) {
-    win.webContents.send("smoke:overlay", { ...overlayState(80, "custom"), customCompanion, companionSize: 96, companionAnimated: animated });
-    await waitFor(`document.querySelector('.companion--custom').dataset.animated === '${animated}'`);
+    await setCustomOverlay({ ...overlayState(80, "custom"), customCompanion, companionSize: 96, companionAnimated: animated });
     for (const locked of [true, false]) {
       win.webContents.send("smoke:overlay-preferences", { enabled: true, locked, opacity: 0.9, bounds: null });
       await waitFor(`document.querySelector('.overlay-shell').classList.contains('overlay-shell--editing') === ${!locked}`);
@@ -270,8 +309,7 @@ app.whenReady().then(async () => {
     const asset = await evaluate(`(async () => { ${storageSource};
       return importCompanionGif(new File([Uint8Array.from(atob(${JSON.stringify(bytes)}), c => c.charCodeAt(0))], 'rectangular.gif', { type: 'image/gif' })); })()`);
     for (const animated of [true, false]) {
-      win.webContents.send("smoke:overlay", { ...overlayState(80, "custom"), customCompanion: asset, companionSize: 96, companionAnimated: animated });
-      await waitFor(`document.querySelector('.custom-gif-animation')?.naturalWidth === ${width} && document.querySelector('.custom-gif-animation')?.naturalHeight === ${height} && document.querySelector('.companion--custom').dataset.animated === '${animated}'`);
+      await setCustomOverlay({ ...overlayState(80, "custom"), customCompanion: asset, companionSize: 96, companionAnimated: animated });
       await resizeOverlay(260, 112);
       await assertGifFits();
       await resizeOverlay(720, 296);
@@ -279,6 +317,7 @@ app.whenReady().then(async () => {
     }
   }
   win.webContents.disableDeviceEmulation();
+  win.webContents.debugger.detach();
   assert.deepEqual(errors, [], "No renderer console errors");
   console.log(overlayOnly ? "Overlay smoke passed: GIF resizing, display scaling, animation/pause, rectangular images, and editing layouts." : "Planning smoke passed: sessions, budgets, scenarios, timeline, heatmap, companions, custom GIF import/animation/pause/restart/backup restoration/invalid files/removal, and responsive overlays.");
   if (!overlayOnly) console.log(`Screenshots: ${outputDir}`);
