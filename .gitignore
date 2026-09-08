@@ -44,5 +44,8 @@ playwright-report/
 src-tauri/
 assets/platform-icons/
 
-# Local review includes machine-specific paths; the public implementation log is separate.
-DESIGN_REVIEW.md
+# Internal notes and review material.
+DESIGN_REVIEW*.md
+PROJECT_OVERVIEW.md
+RELEASING.md
+private-notes/

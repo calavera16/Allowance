@@ -77,9 +77,11 @@ time-specific; rerun `npm audit` when preparing a public build.
 
 ## Reporting a vulnerability
 
-Once the repository is published, use GitHub's private vulnerability reporting
-on its Security tab if the maintainer has enabled it. If it is unavailable,
-open an issue asking for a private reporting channel without posting exploit
-details or personal files. Include the app version and redacted reproduction
-steps through the private channel. The current release candidate is 0.3.4;
-no support or security review of older binaries is implied.
+Use GitHub's private vulnerability reporting on this repository's Security tab
+when available. Otherwise, open an issue requesting a private reporting channel
+without posting exploit details, credentials, or personal files.
+
+Through the private channel, include the affected Allowance version, Windows
+version, reproduction steps, and expected impact. Redact personal information
+from any supporting material. This policy describes version 0.3.4; it does not
+imply that older binaries receive security updates.

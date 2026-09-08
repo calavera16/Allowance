@@ -5,7 +5,8 @@ const os = require("node:os");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
-const rootFiles = new Set([".gitignore", ".gitattributes", ".env.example", "README.md", "PROJECT_OVERVIEW.md", "LICENSE", "SECURITY.md", "RELEASING.md", "CHANGELOG.md", "DESIGN_REVIEW_IMPLEMENTATION.md", "package.json", "package-lock.json", "index.html", "vite.config.ts", "tsconfig.json", "tsconfig.node.json"]);
+const rootFiles = new Set([".gitignore", ".gitattributes", ".env.example", "README.md", "LICENSE", "SECURITY.md", "CHANGELOG.md", "package.json", "package-lock.json", "index.html", "vite.config.ts", "tsconfig.json", "tsconfig.node.json"]);
+const documentationFiles = new Set(["docs/USER_GUIDE.md", "docs/DEVELOPMENT.md", "docs/images/overview.png"]);
 const skippedDirectories = new Set(["node_modules", "dist", "release", ".git", ".claude", ".codex", ".idea", ".vscode", "src-tauri", "coverage", "test-results", "playwright-report"]);
 function sensitiveName(file) {
   if (file === ".env.example") return false;
@@ -13,7 +14,7 @@ function sensitiveName(file) {
 }
 function sourceAllowed(file) {
   if (sensitiveName(file)) return false;
-  return rootFiles.has(file) || file === "build/installer.nsh" || /^(?:electron|scripts)\/[^/]+\.cjs$/.test(file) ||
+  return rootFiles.has(file) || documentationFiles.has(file) || file === "build/installer.nsh" || /^(?:electron|scripts)\/[^/]+\.cjs$/.test(file) ||
     /^src\/(?:[^/]+\/)*[^/]+\.(?:ts|tsx|css)$/.test(file) || /^assets\/icon\.(?:svg|png|ico)$/.test(file) ||
     /^\.github\/workflows\/[^/]+\.ya?ml$/.test(file);
 }
