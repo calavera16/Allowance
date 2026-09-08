@@ -1,0 +1,107 @@
+{
+  "name": "usage-tracker",
+  "description": "A private desktop usage monitor for Codex and Claude Code",
+  "author": "UsageTracker contributors",
+  "license": "MIT",
+  "private": true,
+  "version": "0.3.4",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"npm:web\" \"npm:desktop\"",
+    "web": "vite --port 1420",
+    "desktop": "wait-on tcp:127.0.0.1:1420 && node scripts/desktop.cjs",
+    "start": "npm run build && node scripts/desktop.cjs --built",
+    "build": "tsc && vite build && node electron/verify-build.cjs",
+    "preview": "vite preview",
+    "icons": "node electron/render-icons.cjs",
+    "test": "node --test electron/*.test.cjs",
+    "test:ui": "npm run build && node electron/run-planning-smoke.cjs && node electron/run-planning-smoke.cjs --usage",
+    "dist": "npm run build && electron-builder --win nsis portable --publish never",
+    "dist:signed": "npm run build && electron-builder --win nsis portable --publish never -c.forceCodeSigning=true",
+    "security:check": "node scripts/release-audit.cjs",
+    "release:source": "node scripts/release-audit.cjs --export",
+    "test:security": "node electron/run-planning-smoke.cjs --security"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "concurrently": "10.0.5",
+    "electron": "44.1.1",
+    "electron-builder": "26.15.3",
+    "typescript": "^5.9.3",
+    "vite": "8.2.2",
+    "wait-on": "9.1.0"
+  },
+  "build": {
+    "appId": "com.usagetracker.allowance",
+    "productName": "Allowance",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/processes.cjs",
+      "electron/local-files.cjs",
+      "electron/claude-hook.cjs",
+      "electron/logger.cjs",
+      "electron/main.cjs",
+      "electron/preload.cjs",
+      "electron/collectors.cjs",
+      "electron/tray-icon.cjs",
+      "electron/security.cjs",
+      "assets/icon.ico",
+      "assets/icon.png",
+      "package.json",
+      "!**/.env",
+      "!**/.env.*",
+      "!**/*.map"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Allowance-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Allowance-Portable-${version}-${arch}.${ext}"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    }
+  },
+  "engines": {
+    "node": ">=22.17.0"
+  }
+}

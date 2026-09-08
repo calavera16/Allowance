@@ -1,0 +1,48 @@
+node_modules/
+dist/
+release/
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# Local configuration and credentials (only the empty template is public).
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+*credentials*.json
+*secrets*.json
+.claude/
+.codex/
+
+# Personal snapshots, exported backups, databases and diagnostic material.
+*.jsonl
+*.db
+*.sqlite*
+*.backup
+*.bak
+*.dmp
+*.tmp
+*.zip
+allowance-backup*.json
+allowance-export*.json
+allowance-history*.csv
+claude-status*.json
+overlay-settings.json
+coverage/
+test-results/
+playwright-report/
+
+# Unused legacy platform assets.
+src-tauri/
+assets/platform-icons/
+
+# Local review includes machine-specific paths; the public implementation log is separate.
+DESIGN_REVIEW.md
